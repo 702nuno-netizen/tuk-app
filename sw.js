@@ -1,6 +1,6 @@
 /* Service worker: guarda APENAS a "casca" da app (HTML/CSS/JS/ícones).
    Nunca guarda dados: os pedidos à API (script.google.com) passam sempre pela rede. */
-const CACHE = 'voyager-shell-v1';
+const CACHE = 'voyager-shell-v2';
 const SHELL = ['./', 'index.html', 'app.css', 'app.js', 'vendor/chart.umd.min.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/favicon-32.png'];
 

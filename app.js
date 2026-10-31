@@ -762,6 +762,22 @@
     go(['hoje', 'mes', 'ano', 'obj'].includes(tab) ? tab : 'hoje');
   }
 
+  // Link de configuração: …/#setup=<base64url de {"u":URL_EXEC,"t":TOKEN}>. Lido uma vez, guardado e apagado do URL.
+  function consumeSetupLink() {
+    const m = /(?:^#|&)setup=([A-Za-z0-9_\-+/=]+)/.exec(location.hash || '');
+    if (!m) return false;
+    history.replaceState(null, '', location.pathname + location.search); // tira o segredo do URL e do histórico
+    try {
+      const b = m[1].replace(/-/g, '+').replace(/_/g, '/');
+      const cfg = JSON.parse(decodeURIComponent(escape(atob(b + '==='.slice((b.length + 3) % 4)))));
+      const u = String(cfg.u || '').trim(), t = String(cfg.t || '').trim();
+      if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(u) || !/^[\w-]{32,}$/.test(t)) throw new Error('bad');
+      localStorage.setItem(LS.url, u); localStorage.setItem(LS.token, t);
+      return true;
+    } catch (e) { setTimeout(() => toast('Link de configuração inválido.', true), 300); return false; }
+  }
+  const fromLink = MODE === 'pwa' && consumeSetupLink();
+  if (fromLink) setTimeout(() => toast('Ligação configurada ✓'), 600);
   if (MODE === 'pwa' && (!localStorage.getItem(LS.url) || !localStorage.getItem(LS.token))) setup();
   else start();
 })();
