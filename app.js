@@ -163,7 +163,27 @@
     else v.innerHTML = viewObj();
     $('#nav').classList.toggle('hidden', st.settings);
     after();
+    refreshSteppers();
   }
+
+  /* Anos com folha configurada (2026, 2027, …). Enquanto a config não chega, não bloqueia nada. */
+  function hasYear(y) { const s = st.config && st.config.sheets; return !s || !!s[String(y)]; }
+  function noYear(y) { toast(`Ainda não há folha para ${y}. Adiciona-a em Definições.`, true); }
+  function stepTargetYear(act) {
+    switch (act) {
+      case 'prev': return isoParts(isoAdd(st.date, -1)).y;
+      case 'next': return isoParts(isoAdd(st.date, 1)).y;
+      case 'mprev': return st.mM === 1 ? st.mY - 1 : st.mY;
+      case 'mnext': return st.mM === 12 ? st.mY + 1 : st.mY;
+      case 'yprev': return st.year - 1;
+      case 'ynext': return st.year + 1;
+    }
+    return null;
+  }
+  function refreshSteppers() {
+    $$('.step-btn[data-act]').forEach(b => { const y = stepTargetYear(b.dataset.act); if (y != null) b.disabled = !hasYear(y); });
+  }
+  function shiftDay(n) { const d = isoAdd(st.date, n); const y = isoParts(d).y; if (!hasYear(y)) { noYear(y); return; } vibrate(6); setDate(d); }
 
   function load() {
     if (st.settings) return loadConfig();
@@ -494,7 +514,7 @@
 
   /* ================= DEFINIÇÕES ================= */
   function loadConfig() {
-    return api('getConfig').then(c => { st.config = c; if (st.settings) render(); }).catch(e => { st.cfgErr = e.message; if (st.settings) render(); });
+    return api('getConfig').then(c => { st.config = c; if (st.settings) render(); else refreshSteppers(); }).catch(e => { st.cfgErr = e.message; if (st.settings) render(); });
   }
   function viewSettings() {
     const c = st.config;
@@ -665,8 +685,8 @@
     const b = e.target.closest('[data-act]'); if (!b) return;
     const a = b.dataset.act; const f = b.dataset.f;
     switch (a) {
-      case 'prev': vibrate(6); setDate(isoAdd(st.date, -1)); break;
-      case 'next': vibrate(6); setDate(isoAdd(st.date, 1)); break;
+      case 'prev': shiftDay(-1); break;
+      case 'next': shiftDay(1); break;
       case 'today': e.preventDefault(); setDate(today); break;
       case 'retry': render(); load(); break;
       case 'add': addTerm(f, b); break;
@@ -694,10 +714,10 @@
       }
       case 'notes': saveNotes(); break;
       case 'openday': st.tab = 'hoje'; $$('#nav button').forEach(x => x.classList.toggle('on', x.dataset.tab === 'hoje')); window.scrollTo({ top: 0 }); setDate(iso(st.month.year, st.month.month, Number(b.dataset.d))); break;
-      case 'mprev': st.mM--; if (st.mM < 1) { st.mM = 12; st.mY--; } render(); loadMonth(); break;
-      case 'mnext': st.mM++; if (st.mM > 12) { st.mM = 1; st.mY++; } render(); loadMonth(); break;
-      case 'yprev': st.year--; render(); load(); break;
-      case 'ynext': st.year++; render(); load(); break;
+      case 'mprev': if (!hasYear(stepTargetYear(a))) { noYear(stepTargetYear(a)); break; } st.mM--; if (st.mM < 1) { st.mM = 12; st.mY--; } render(); loadMonth(); break;
+      case 'mnext': if (!hasYear(stepTargetYear(a))) { noYear(stepTargetYear(a)); break; } st.mM++; if (st.mM > 12) { st.mM = 1; st.mY++; } render(); loadMonth(); break;
+      case 'yprev': if (!hasYear(st.year - 1)) { noYear(st.year - 1); break; } st.year--; render(); load(); break;
+      case 'ynext': if (!hasYear(st.year + 1)) { noYear(st.year + 1); break; } st.year++; render(); load(); break;
       case 'save-goals': {
         const vals = $$('.goal-in').map(x => parseNum(x.value));
         b.classList.add('busy');
@@ -744,7 +764,7 @@
   document.addEventListener('touchstart', e => { if (st.tab !== 'hoje' || st.settings || !e.target.closest('.hero')) { tx = null; return; } tx = e.touches[0].clientX; ty = e.touches[0].clientY; }, { passive: true });
   document.addEventListener('touchend', e => {
     if (tx == null) return; const dx = e.changedTouches[0].clientX - tx, dy = e.changedTouches[0].clientY - ty; tx = null;
-    if (Math.abs(dx) > 60 && Math.abs(dy) < 40) setDate(isoAdd(st.date, dx < 0 ? 1 : -1));
+    if (Math.abs(dx) > 60 && Math.abs(dy) < 40) shiftDay(dx < 0 ? 1 : -1);
   }, { passive: true });
 
   // Ao voltar à app (ex.: no dia seguinte), atualiza "hoje" e os dados
@@ -760,6 +780,7 @@
     if (q.get('date') && /^\d{4}-\d{2}-\d{2}$/.test(q.get('date'))) st.date = q.get('date');
     const tab = q.get('tab'); if (tab === 'settings') { st.settings = true; go('hoje'); st.settings = true; render(); loadConfig(); return; }
     go(['hoje', 'mes', 'ano', 'obj'].includes(tab) ? tab : 'hoje');
+    setTimeout(() => { if (!st.config) loadConfig(); }, 400); // anos disponíveis (2026, 2027…) para as setas
   }
 
   // Link de configuração: …/#setup=<base64url de {"u":URL_EXEC,"t":TOKEN}>. Lido uma vez, guardado e apagado do URL.
