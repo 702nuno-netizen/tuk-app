@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2a63ad"/><stop offset=".55" stop-color="#1a4580"/><stop offset="1" stop-color="#0d2547"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f6d77a"/><stop offset=".5" stop-color="#d9a93a"/><stop offset="1" stop-color="#b8861f"/>
+    </linearGradient>
+    <pattern id="az" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path d="M32 6 L38 26 L58 32 L38 38 L32 58 L26 38 L6 32 L26 26 Z" fill="none" stroke="#ffffff" stroke-opacity=".07" stroke-width="2"/>
+      <circle cx="0" cy="0" r="9" fill="none" stroke="#ffffff" stroke-opacity=".06" stroke-width="2"/>
+      <circle cx="64" cy="0" r="9" fill="none" stroke="#ffffff" stroke-opacity=".06" stroke-width="2"/>
+      <circle cx="0" cy="64" r="9" fill="none" stroke="#ffffff" stroke-opacity=".06" stroke-width="2"/>
+      <circle cx="64" cy="64" r="9" fill="none" stroke="#ffffff" stroke-opacity=".06" stroke-width="2"/>
+    </pattern>
+    <clipPath id="clip"><rect width="512" height="512" rx="0"/></clipPath>
+  </defs>
+  <g clip-path="url(#clip)">
+    <rect width="512" height="512" fill="url(#bg)"/>
+    <rect width="512" height="512" fill="url(#az)"/>
+    <g transform="translate(256 256) scale(0.8) translate(-256 -262)">
+      <circle cx="256" cy="262" r="178" fill="none" stroke="url(#gold)" stroke-width="7" opacity=".9"/>
+      <!-- tuk-tuk -->
+      <g transform="translate(96 112) scale(5)">
+        <path d="M7 14 Q7 9 12 9 H43 Q49 9 51.5 14 L55.5 27 H52 L48.6 15.2 Q48 14 46.5 14 Z" fill="url(#gold)"/>
+        <rect x="8.6" y="13" width="3" height="19" rx="1.2" fill="#fff"/>
+        <path d="M46.6 15.5 L50 27 H44.5 L43.8 15.5 Z" fill="#fff" opacity=".42"/>
+        <rect x="15" y="20.5" width="13" height="11.5" rx="3" fill="#fff" opacity=".55"/>
+        <path d="M6.5 31 H37 Q40 31 41.5 28.6 L42.4 27 H53.5 Q58.6 27 59 32.5 L59.4 38 Q59.6 42 55.6 42 H8.5 Q4 42 4 37.8 V33.5 Q4 31 6.5 31 Z" fill="#fff"/>
+        <rect x="8" y="35" width="29" height="1.8" rx=".9" fill="url(#gold)"/>
+        <circle cx="16" cy="43" r="6.4" fill="#0d2547" stroke="#fff" stroke-width="2.4"/>
+        <circle cx="16" cy="43" r="2.3" fill="url(#gold)"/>
+        <circle cx="50" cy="43.4" r="5.6" fill="#0d2547" stroke="#fff" stroke-width="2.4"/>
+        <circle cx="50" cy="43.4" r="2" fill="url(#gold)"/>
+        <circle cx="57" cy="31.6" r="1.7" fill="url(#gold)"/>
+      </g>
+    </g>
+  </g>
+</svg>
