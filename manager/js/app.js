@@ -85,8 +85,11 @@
       }
       st.saving = true; showSaveState();
       try {
-        await st.store.save(snap);
-        if (st.mode === 'sheets') localStorage.setItem('tm.cache.v1', JSON.stringify(snap));
+        const merged = await st.store.save(snap);
+        if (st.mode === 'sheets') {
+          if (merged) st.data = Store.reconcile(Calc.normalize(st.data), Calc.normalize(snap), merged);
+          localStorage.setItem('tm.cache.v1', JSON.stringify(st.data));
+        }
         st.saveError = '';
       } catch (e) {
         st.saveError = e.message || 'error';
@@ -1308,8 +1311,32 @@
     app.addEventListener('pointerup', onUp);
     app.addEventListener('pointercancel', onUp);
     window.addEventListener('hashchange', () => { if (!st.ready) return; readHash(); render(); });
-    window.addEventListener('online', () => { st.offline = false; if (st.readOnly) location.reload(); else render(); });
+    window.addEventListener('online', () => { st.offline = false; if (st.readOnly) location.reload(); else { render(); scheduleSheetRefresh(); } });
     window.addEventListener('offline', () => { st.offline = true; if (st.mode === 'sheets') render(); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') scheduleSheetRefresh(); });
+    window.addEventListener('focus', () => scheduleSheetRefresh());
+  }
+  let refreshTimer = 0;
+  function scheduleSheetRefresh() {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(refreshFromSheet, 400);
+  }
+  function refreshFromSheet() {
+    if (!st.ready || st.mode !== 'sheets' || st.readOnly || !st.store || !st.store.load) return;
+    if (!st.data || !st.data.config.onboarded) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    saveChain = saveChain.then(async () => {
+      if (!navigator.onLine) return;
+      const previous = st.store.baseline ? st.store.baseline() : null;
+      const fresh = await st.store.load();
+      const next = previous ? Store.reconcile(st.data, previous, fresh) : fresh;
+      if (Store.sameModel(st.data, next)) return;
+      st.data = next;
+      try { localStorage.setItem('tm.cache.v1', JSON.stringify(next)); } catch (e) { /* ignore */ }
+      const typing = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+      if (!typing) { st.formKey = ''; render(); }
+      toast(t('sheetUpdated'));
+    }).catch(() => {});
   }
   wire();
   boot().catch(err => {

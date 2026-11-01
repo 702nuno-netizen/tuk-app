@@ -86,7 +86,7 @@
     d.drivers.forEach(p => drivers.push([cell(p.id), cell(p.name), cell(p.number), cell(p.phone), p.isOwner ? 'SIM' : 'NÃO', p.active ? 'SIM' : 'NÃO', p.deleted ? 'SIM' : 'NÃO', p.order || 0]));
     const pct = blank(['Id', 'Motorista', 'Nome', 'Desde', 'Percentagem']);
     d.drivers.forEach(p => (p.pctHistory || []).forEach((h, i) => {
-      pct.push([cell(p.id + ':' + h.from + ':' + i), cell(p.id), cell(p.name), cell(h.from), h.pct]);
+      pct.push([cell(p.id + ':' + h.from), cell(p.id), cell(p.name), cell(h.from), h.pct]);
     }));
     const types = blank(['Id', 'Chave', 'Nome', 'Nome personalizado', 'Diário ou mensal', 'Repetir', 'Valor mensal', 'De fábrica', 'Apagado', 'Ordem']);
     d.expenseTypes.forEach(t => types.push([
@@ -193,6 +193,309 @@
     return Calc.normalize(raw);
   }
 
+  const DERIVED_HEADERS = { 'Nome': 1, 'Tuk nome': 1 };
+  const NUM_KIND = { num: 1 };
+
+  function configOut(data, field) {
+    const v = data.config[field];
+    if (field === 'tipsEnabled' || field === 'onboarded') return v ? 'SIM' : 'NÃO';
+    if (field === 'bonusMode') return bonusToSheet(v);
+    if (field === 'defaultOwnerPct' || field === 'bonusAmount') return num(v);
+    if (field === 'lastBackup') return text(v).slice(0, 10);
+    return text(v);
+  }
+  function canonConfigValor(chave, raw) {
+    const field = CONFIG_LABEL[text(chave)];
+    if (!field) return text(raw);
+    if (field === 'tipsEnabled' || field === 'onboarded') return (raw === '' || raw == null) ? '' : (flag(raw) ? 'SIM' : 'NÃO');
+    if (field === 'bonusMode') return bonusToSheet(bonusFromSheet(raw));
+    if (field === 'defaultOwnerPct' || field === 'bonusAmount') return raw === '' || raw == null ? '' : num(raw);
+    if (field === 'lastBackup') return text(raw).slice(0, 10);
+    return text(raw);
+  }
+  function canonByKind(kind, raw, chave) {
+    if (kind === 'config') return canonConfigValor(chave, raw);
+    if (kind === 'num') return raw === '' || raw == null ? '' : num(raw);
+    if (kind === 'date') return text(raw).slice(0, 10);
+    if (kind === 'flag') return flag(raw) ? 'SIM' : 'NÃO';
+    if (kind === 'ativo') return (raw === '' || raw == null || flag(raw)) ? 'SIM' : 'NÃO';
+    if (kind === 'apagado') return (raw === '' || raw == null) ? 'NÃO' : (flag(raw) ? 'SIM' : 'NÃO');
+    if (kind === 'fuel') return fuelToSheet(fuelFromSheet(raw));
+    if (kind === 'kind') return kindToSheet(kindFromSheet(raw));
+    return text(raw);
+  }
+  function outCell(kind, value) {
+    if (NUM_KIND[kind] || kind === 'num') return value === '' || value == null ? '' : num(value);
+    if (typeof value === 'string' && /^[=+\-@\t\r]/.test(value)) return "'" + value;
+    return value == null ? '' : value;
+  }
+  function canonValues(raw, spec) {
+    const chave = text(raw.Chave);
+    const out = {};
+    spec.headers.forEach(h => {
+      out[h] = canonByKind(spec.kinds[h] || 'text', raw[h], chave);
+    });
+    return out;
+  }
+  function sameCanon(a, b) {
+    if (!a && !b) return true;
+    if (!a || !b) return false;
+    const keys = new Set(Object.keys(a).concat(Object.keys(b)));
+    for (const k of keys) {
+      if (DERIVED_HEADERS[k]) continue;
+      if (a[k] !== b[k]) return false;
+    }
+    return true;
+  }
+  function indexGrid(grid, spec) {
+    const source = grid && grid.length ? grid : [];
+    const headers = source.length ? source[0].map(h => text(h).trim()) : spec.headers.slice();
+    const byKey = new Map();
+    for (let i = 1; i < source.length; i++) {
+      const cells = source[i] || [];
+      if (!cells.some(c => text(c).trim() !== '')) continue;
+      const raw = {};
+      headers.forEach((h, idx) => { raw[h] = cells[idx] == null ? '' : cells[idx]; });
+      const key = spec.keyOfRow(raw);
+      if (!key || byKey.has(key)) continue;
+      byKey.set(key, { rowNumber: i + 1, key, raw });
+    }
+    return { headers: headers.length ? headers : spec.headers.slice(), byKey };
+  }
+  function planTab(spec, baseRecs, localRecs, indexed) {
+    const b = new Map(baseRecs.map(r => [r.key, r]));
+    const l = new Map(localRecs.map(r => [r.key, r]));
+    const keys = new Set([...b.keys(), ...l.keys(), ...indexed.byKey.keys()]);
+    const ops = [];
+    keys.forEach(key => {
+      const br = b.get(key);
+      const lr = l.get(key);
+      const rr = indexed.byKey.get(key);
+      const bCanon = br ? canonValues(br.values, spec) : null;
+      const lCanon = lr ? canonValues(lr.values, spec) : null;
+      const rCanon = rr ? canonValues(rr.raw, spec) : null;
+      const localChanged = !sameCanon(bCanon, lCanon);
+      const remoteChanged = !sameCanon(bCanon, rCanon);
+      if (lCanon && !rCanon) {
+        if (!bCanon) ops.push({ type: 'append', key, values: lCanon });
+        return;
+      }
+      if (!lCanon && rCanon) {
+        if (bCanon && !remoteChanged) ops.push({ type: 'delete', key, rowNumber: rr.rowNumber });
+        return;
+      }
+      if (lCanon && rCanon && localChanged && !remoteChanged && !sameCanon(lCanon, rCanon)) {
+        ops.push({ type: 'update', key, rowNumber: rr.rowNumber, values: lCanon });
+      }
+    });
+    return ops;
+  }
+  function applyTabOps(grid, spec, ops) {
+    const headers = spec.headers;
+    let rows = (grid || []).map(r => (r || []).slice());
+    const needsHeader = !rows.length || !text((rows[0] || [])[0]);
+    if (needsHeader) rows = [headers.slice()];
+    ops.filter(op => op.type === 'update' && op.rowNumber > 1).forEach(op => {
+      const existing = rows[op.rowNumber - 1] || [];
+      const next = headers.map(h => outCell(spec.kinds[h] || 'text', op.values[h]));
+      for (let i = headers.length; i < existing.length; i++) next[i] = existing[i];
+      rows[op.rowNumber - 1] = next;
+    });
+    ops.filter(op => op.type === 'delete' && op.rowNumber > 1)
+      .map(op => op.rowNumber)
+      .sort((a, b) => b - a)
+      .forEach(n => { if (rows[n - 1]) rows.splice(n - 1, 1); });
+    ops.filter(op => op.type === 'append').forEach(op => {
+      rows.push(headers.map(h => outCell(spec.kinds[h] || 'text', op.values[h])));
+    });
+    return rows;
+  }
+
+  function nameOf(data, kind, id) {
+    const list = kind === 'tuk' ? data.tuks : data.drivers;
+    const found = (list || []).find(x => x.id === id);
+    return found ? found.name : '';
+  }
+  const SPECS = {
+    Config: {
+      headers: ['Chave', 'Valor'],
+      kinds: { 'Chave': 'text', 'Valor': 'config' },
+      keyOfRow: obj => text(obj.Chave),
+      records(data) {
+        return CONFIG_FIELDS.map(([field, label]) => ({ key: label, values: { 'Chave': label, 'Valor': configOut(data, field) } }));
+      }
+    },
+    Tuks: {
+      headers: ['Id', 'Nome', 'Número', 'Matrícula', 'Tipo', 'Garagem mensal', 'Ativo', 'Apagado', 'Ordem'],
+      kinds: { 'Id': 'text', 'Nome': 'text', 'Número': 'text', 'Matrícula': 'text', 'Tipo': 'fuel', 'Garagem mensal': 'num', 'Ativo': 'ativo', 'Apagado': 'apagado', 'Ordem': 'num' },
+      keyOfRow: obj => text(obj.Id),
+      records(data) {
+        return data.tuks.map(t => ({
+          key: t.id,
+          values: { 'Id': t.id, 'Nome': t.name, 'Número': text(t.number), 'Matrícula': t.plate, 'Tipo': fuelToSheet(t.fuel), 'Garagem mensal': num(t.garageMonthly), 'Ativo': t.active ? 'SIM' : 'NÃO', 'Apagado': t.deleted ? 'SIM' : 'NÃO', 'Ordem': num(t.order) }
+        }));
+      }
+    },
+    Motoristas: {
+      headers: ['Id', 'Nome', 'Número', 'Telefone', 'É o dono', 'Ativo', 'Apagado', 'Ordem'],
+      kinds: { 'Id': 'text', 'Nome': 'text', 'Número': 'text', 'Telefone': 'text', 'É o dono': 'flag', 'Ativo': 'ativo', 'Apagado': 'apagado', 'Ordem': 'num' },
+      keyOfRow: obj => text(obj.Id),
+      records(data) {
+        return data.drivers.map(p => ({
+          key: p.id,
+          values: { 'Id': p.id, 'Nome': p.name, 'Número': text(p.number), 'Telefone': text(p.phone), 'É o dono': p.isOwner ? 'SIM' : 'NÃO', 'Ativo': p.active ? 'SIM' : 'NÃO', 'Apagado': p.deleted ? 'SIM' : 'NÃO', 'Ordem': num(p.order) }
+        }));
+      }
+    },
+    Percentagens: {
+      headers: ['Id', 'Motorista', 'Nome', 'Desde', 'Percentagem'],
+      kinds: { 'Id': 'text', 'Motorista': 'text', 'Nome': 'text', 'Desde': 'date', 'Percentagem': 'num' },
+      keyOfRow(obj) {
+        const driver = text(obj.Motorista);
+        const from = text(obj.Desde).slice(0, 10);
+        if (driver && /^\d{4}-\d{2}-\d{2}$/.test(from)) return driver + '|' + from;
+        return text(obj.Id);
+      },
+      records(data) {
+        const recs = [];
+        data.drivers.forEach(p => (p.pctHistory || []).forEach(h => {
+          recs.push({ key: p.id + '|' + h.from, values: { 'Id': p.id + ':' + h.from, 'Motorista': p.id, 'Nome': p.name, 'Desde': h.from, 'Percentagem': num(h.pct) } });
+        }));
+        return recs;
+      }
+    },
+    TiposGasto: {
+      headers: ['Id', 'Chave', 'Nome', 'Nome personalizado', 'Diário ou mensal', 'Repetir', 'Valor mensal', 'De fábrica', 'Apagado', 'Ordem'],
+      kinds: { 'Id': 'text', 'Chave': 'text', 'Nome': 'text', 'Nome personalizado': 'flag', 'Diário ou mensal': 'kind', 'Repetir': 'flag', 'Valor mensal': 'num', 'De fábrica': 'flag', 'Apagado': 'apagado', 'Ordem': 'num' },
+      keyOfRow: obj => text(obj.Id),
+      records(data) {
+        return data.expenseTypes.map(t => ({
+          key: t.id,
+          values: { 'Id': t.id, 'Chave': t.systemKey || '', 'Nome': t.name, 'Nome personalizado': t.nameCustom ? 'SIM' : 'NÃO', 'Diário ou mensal': kindToSheet(t.kind), 'Repetir': t.repeatMonthly ? 'SIM' : 'NÃO', 'Valor mensal': num(t.defaultAmount), 'De fábrica': t.factory ? 'SIM' : 'NÃO', 'Apagado': t.deleted ? 'SIM' : 'NÃO', 'Ordem': num(t.order) }
+        }));
+      }
+    },
+    Dias: {
+      headers: ['Data', 'Motorista', 'Nome', 'Tuk', 'Tuk nome', 'Dia a zero', 'Tuk escolhido'],
+      kinds: { 'Data': 'date', 'Motorista': 'text', 'Nome': 'text', 'Tuk': 'text', 'Tuk nome': 'text', 'Dia a zero': 'flag', 'Tuk escolhido': 'flag' },
+      keyOfRow: obj => text(obj.Data).slice(0, 10) + '|' + text(obj.Motorista),
+      records(data) {
+        return data.assignments.map(a => ({
+          key: a.date + '|' + a.driverId,
+          values: { 'Data': a.date, 'Motorista': a.driverId, 'Nome': nameOf(data, 'driver', a.driverId), 'Tuk': a.tukId || '', 'Tuk nome': nameOf(data, 'tuk', a.tukId), 'Dia a zero': a.workedZero ? 'SIM' : 'NÃO', 'Tuk escolhido': a.tukExplicit ? 'SIM' : 'NÃO' }
+        }));
+      }
+    },
+    Servicos: {
+      headers: ['Id', 'Data', 'Motorista', 'Nome', 'Valor', 'Nota'],
+      kinds: { 'Id': 'text', 'Data': 'date', 'Motorista': 'text', 'Nome': 'text', 'Valor': 'num', 'Nota': 'text' },
+      keyOfRow: obj => text(obj.Id),
+      records(data) {
+        return data.services.map(s => ({
+          key: s.id,
+          values: { 'Id': s.id, 'Data': s.date, 'Motorista': s.driverId, 'Nome': nameOf(data, 'driver', s.driverId), 'Valor': num(s.amount), 'Nota': s.note || '' }
+        }));
+      }
+    },
+    Gastos: {
+      headers: ['Id', 'Âmbito', 'Data', 'Ano', 'Mês', 'Tuk', 'Tipo', 'Valor', 'Nota'],
+      kinds: { 'Id': 'text', 'Âmbito': 'kind', 'Data': 'date', 'Ano': 'num', 'Mês': 'num', 'Tuk': 'text', 'Tipo': 'text', 'Valor': 'num', 'Nota': 'text' },
+      keyOfRow: obj => text(obj.Id),
+      records(data) {
+        return data.expenses.map(e => ({
+          key: e.id,
+          values: { 'Id': e.id, 'Âmbito': kindToSheet(e.scope), 'Data': e.date || '', 'Ano': e.year || '', 'Mês': e.month || '', 'Tuk': e.tukId || '', 'Tipo': e.typeId, 'Valor': num(e.amount), 'Nota': e.note || '' }
+        }));
+      }
+    },
+    Entregas: {
+      headers: ['Id', 'Data', 'Motorista', 'Nome', 'Valor', 'Nota'],
+      kinds: { 'Id': 'text', 'Data': 'date', 'Motorista': 'text', 'Nome': 'text', 'Valor': 'num', 'Nota': 'text' },
+      keyOfRow: obj => text(obj.Id),
+      records(data) {
+        return data.handovers.map(h => ({
+          key: h.id,
+          values: { 'Id': h.id, 'Data': h.date, 'Motorista': h.driverId, 'Nome': nameOf(data, 'driver', h.driverId), 'Valor': num(h.amount), 'Nota': h.note || '' }
+        }));
+      }
+    },
+    Gratificacoes: {
+      headers: ['Id', 'Data', 'Motorista', 'Nome', 'Valor'],
+      kinds: { 'Id': 'text', 'Data': 'date', 'Motorista': 'text', 'Nome': 'text', 'Valor': 'num' },
+      keyOfRow: obj => text(obj.Id),
+      records(data) {
+        return data.tips.map(t => ({
+          key: t.id,
+          values: { 'Id': t.id, 'Data': t.date, 'Motorista': t.driverId, 'Nome': nameOf(data, 'driver', t.driverId), 'Valor': num(t.amount) }
+        }));
+      }
+    },
+    Objetivos: {
+      headers: ['Ano', 'Mês', 'Valor'],
+      kinds: { 'Ano': 'num', 'Mês': 'num', 'Valor': 'num' },
+      keyOfRow: obj => {
+        const y = num(obj.Ano), m = num(obj['Mês']);
+        return y && m ? y + '|' + m : '';
+      },
+      records(data) {
+        return data.goals.map(g => ({ key: g.year + '|' + g.month, values: { 'Ano': g.year, 'Mês': g.month, 'Valor': num(g.amount) } }));
+      }
+    }
+  };
+
+  function syncGrids(baseline, local, grids) {
+    const base = Calc.normalize(baseline || Calc.emptyModel());
+    const loc = Calc.normalize(local || Calc.emptyModel());
+    const next = {};
+    const ops = [];
+    SHEETS.forEach(name => {
+      const spec = SPECS[name];
+      const grid = grids && grids[name] ? grids[name] : [];
+      const indexed = indexGrid(grid, spec);
+      let tabOps = planTab(spec, spec.records(base), spec.records(loc), indexed);
+      const needsHeader = !grid.length || !text((grid[0] || [])[0]);
+      if (needsHeader && tabOps.some(op => op.type === 'append' || op.type === 'update')) {
+        tabOps = [{ type: 'header', key: '', values: {} }].concat(tabOps);
+      }
+      tabOps.forEach(op => ops.push(Object.assign({ tab: name }, op)));
+      next[name] = applyTabOps(grid, spec, tabOps.filter(op => op.type !== 'header'));
+    });
+    return { ops: ops.filter(op => op.type !== 'header'), grids: next, merged: fromTables(next), headerTabs: ops.filter(op => op.type === 'header').map(op => op.tab) };
+  }
+  function gridsFromModel(data) {
+    const model = Calc.normalize(data || Calc.emptyModel());
+    const grids = {};
+    SHEETS.forEach(name => {
+      const spec = SPECS[name];
+      const rows = [spec.headers.slice()];
+      spec.records(model).forEach(rec => {
+        rows.push(spec.headers.map(h => outCell(spec.kinds[h] || 'text', rec.values[h])));
+      });
+      grids[name] = rows;
+    });
+    return grids;
+  }
+  function hasLocalChanges(base, local) {
+    return syncGrids(base, local, gridsFromModel(base)).ops.length > 0;
+  }
+  function reconcile(current, base, remote) {
+    const remoteModel = Calc.normalize(remote || Calc.emptyModel());
+    return syncGrids(base || Calc.emptyModel(), current || remoteModel, toTables(remoteModel)).merged;
+  }
+  function sameModel(a, b) {
+    return !hasLocalChanges(a, b) && !hasLocalChanges(b, a);
+  }
+  function colLetter(n) {
+    let s = '';
+    let x = n;
+    while (x > 0) {
+      const m = (x - 1) % 26;
+      s = String.fromCharCode(65 + m) + s;
+      x = Math.floor((x - 1) / 26);
+    }
+    return s;
+  }
+
   function fileTitle(name, backup) {
     const clean = String(name || 'Tuk').replace(/[\r\n]/g, ' ').trim().slice(0, 80) || 'Tuk';
     return backup ? clean + ' – Tuk Manager (cópia de segurança)' : clean + ' – Tuk Manager';
@@ -291,6 +594,84 @@
     }
   }
 
+  async function readGrids(token, id) {
+    await ensureTabs(token, id);
+    const url = new URL('https://sheets.googleapis.com/v4/spreadsheets/' + id + '/values:batchGet');
+    SHEETS.forEach(name => url.searchParams.append('ranges', "'" + name + "'!A:Z"));
+    const res = await gjson(token, url.toString());
+    const grids = {};
+    SHEETS.forEach(name => { grids[name] = []; });
+    (res.valueRanges || []).forEach(vr => {
+      const name = String(vr.range || '').split('!')[0].replace(/'/g, '');
+      grids[name] = vr.values || [];
+    });
+    return grids;
+  }
+  async function readAll(token, id) {
+    return fromTables(await readGrids(token, id));
+  }
+  async function sheetIdMap(token, id) {
+    const meta = await gjson(token, 'https://sheets.googleapis.com/v4/spreadsheets/' + id + '?fields=' + encodeURIComponent('sheets.properties'));
+    const map = {};
+    (meta.sheets || []).forEach(s => { map[s.properties.title] = s.properties.sheetId; });
+    return map;
+  }
+  async function pushOps(token, spreadsheetId, ops) {
+    if (!ops.length) return;
+    const tabs = {};
+    ops.forEach(op => { (tabs[op.tab] = tabs[op.tab] || []).push(op); });
+    const idMap = ops.some(op => op.type === 'delete') ? await sheetIdMap(token, spreadsheetId) : null;
+    const names = Object.keys(tabs);
+    for (let i = 0; i < names.length; i++) {
+      const tab = names[i];
+      const spec = SPECS[tab];
+      const list = tabs[tab];
+      const headers = spec.headers;
+      const endCol = colLetter(headers.length);
+      const quote = "'" + tab + "'";
+      const headerOps = list.filter(op => op.type === 'header');
+      if (headerOps.length) {
+        await gjson(token, 'https://sheets.googleapis.com/v4/spreadsheets/' + spreadsheetId + '/values/' + encodeURIComponent(quote + '!A1') + '?valueInputOption=RAW', {
+          method: 'PUT',
+          body: JSON.stringify({ values: [headers], majorDimension: 'ROWS' })
+        });
+      }
+      const updates = list.filter(op => op.type === 'update' && op.rowNumber > 1).map(op => ({
+        range: quote + '!A' + op.rowNumber + ':' + endCol + op.rowNumber,
+        values: [headers.map(h => outCell(spec.kinds[h] || 'text', op.values[h]))]
+      }));
+      if (updates.length) {
+        await gjson(token, 'https://sheets.googleapis.com/v4/spreadsheets/' + spreadsheetId + '/values:batchUpdate', {
+          method: 'POST',
+          body: JSON.stringify({ valueInputOption: 'RAW', data: updates })
+        });
+      }
+      const deletes = list.filter(op => op.type === 'delete' && op.rowNumber > 1)
+        .sort((a, b) => b.rowNumber - a.rowNumber);
+      if (deletes.length) {
+        await gjson(token, 'https://sheets.googleapis.com/v4/spreadsheets/' + spreadsheetId + ':batchUpdate', {
+          method: 'POST',
+          body: JSON.stringify({
+            requests: deletes.map(op => ({
+              deleteDimension: {
+                range: { sheetId: idMap[tab], dimension: 'ROWS', startIndex: op.rowNumber - 1, endIndex: op.rowNumber }
+              }
+            }))
+          })
+        });
+      }
+      const appends = list.filter(op => op.type === 'append').map(op => headers.map(h => outCell(spec.kinds[h] || 'text', op.values[h])));
+      if (appends.length) {
+        const range = encodeURIComponent(quote + '!A1');
+        await gjson(token, 'https://sheets.googleapis.com/v4/spreadsheets/' + spreadsheetId + '/values/' + range + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS', {
+          method: 'POST',
+          body: JSON.stringify({ values: appends, majorDimension: 'ROWS' })
+        });
+      }
+    }
+  }
+
+  // Cópia integral. Só para a folha de segurança — a folha principal nunca é limpa por aqui.
   async function writeAll(token, id, data) {
     await ensureTabs(token, id);
     const tables = toTables(data);
@@ -305,19 +686,6 @@
         data: SHEETS.map(name => ({ range: "'" + name + "'!A1", values: tables[name] }))
       })
     });
-  }
-
-  async function readAll(token, id) {
-    await ensureTabs(token, id);
-    const url = new URL('https://sheets.googleapis.com/v4/spreadsheets/' + id + '/values:batchGet');
-    SHEETS.forEach(name => url.searchParams.append('ranges', "'" + name + "'!A:Z"));
-    const res = await gjson(token, url.toString());
-    const tables = {};
-    (res.valueRanges || []).forEach(vr => {
-      const name = String(vr.range || '').split('!')[0].replace(/'/g, '');
-      tables[name] = vr.values || [];
-    });
-    return fromTables(tables);
   }
 
   async function createSpreadsheet(token, title, role) {
@@ -361,13 +729,32 @@
 
   function createSheetsStore({ getToken, spreadsheetId, backupId }) {
     const ids = { main: spreadsheetId, backup: backupId || null };
+    let baseline = null;
     return {
       mode: 'sheets',
       get spreadsheetId() { return ids.main; },
       get backupId() { return ids.backup; },
       url() { return ids.main ? 'https://docs.google.com/spreadsheets/d/' + ids.main + '/edit' : ''; },
-      async load() { return withToken(getToken, token => readAll(token, ids.main)); },
-      async save(data) { await withToken(getToken, token => writeAll(token, ids.main, data)); },
+      baseline() { return baseline ? JSON.parse(JSON.stringify(baseline)) : null; },
+      async load() {
+        const model = await withToken(getToken, token => readAll(token, ids.main));
+        baseline = model;
+        return JSON.parse(JSON.stringify(model));
+      },
+      async save(data) {
+        const local = Calc.normalize(data);
+        if (baseline && !hasLocalChanges(baseline, local)) return JSON.parse(JSON.stringify(local));
+        const merged = await withToken(getToken, async token => {
+          const grids = await readGrids(token, ids.main);
+          const base = baseline || Calc.emptyModel();
+          const result = syncGrids(base, local, grids);
+          const write = result.ops.concat(result.headerTabs.map(tab => ({ tab: tab, type: 'header' })));
+          if (write.length) await pushOps(token, ids.main, write);
+          return result.merged;
+        });
+        baseline = merged;
+        return JSON.parse(JSON.stringify(merged));
+      },
       async backup(data) {
         if (!ids.backup) return;
         await withToken(getToken, token => writeAll(token, ids.backup, data));
@@ -392,6 +779,7 @@
 
   return {
     SHEETS, toTables, fromTables, fileTitle, createLocalStore, createSheetsStore,
-    findExisting, ensureFiles, fetchProfile, DEMO_KEY
+    findExisting, ensureFiles, fetchProfile, DEMO_KEY,
+    syncGrids, reconcile, sameModel, hasLocalChanges
   };
 });
