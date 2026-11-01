@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0c2344">
+  <title>Termos · Tuk Manager</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div id="app">
+    <header class="hero center">
+      <a class="brand" href="./">Tuk <em>Manager</em></a>
+      <div class="lang" style="max-width:220px;margin-left:auto;margin-right:auto">
+        <button type="button" data-set-lang="pt" class="on">PT</button>
+        <button type="button" data-set-lang="en">EN</button>
+      </div>
+    </header>
+    <div class="page legal-page">
+      <article data-lang="pt">
+        <h1>Termos de utilização</h1>
+        <p>O Tuk Manager é uma versão de teste, gratuita, fornecida tal como está («as is»).</p>
+        <p>Não há garantia de que a app, os cálculos, as folhas Google ou a cópia de segurança estejam sempre disponíveis ou sem erros. Confirma os valores antes de tomares decisões com base neles.</p>
+        <p>Os dados que introduzes são teus. És responsável pela conta Google que usas e por quem tem acesso a este aparelho.</p>
+        <p>A app pode mudar, falhar ou deixar de estar disponível, sem aviso.</p>
+        <p>Ao usar a app aceitas estes termos e a <a href="privacy.html">política de privacidade</a>.</p>
+        <h2>Contacto</h2>
+        <p><a href="mailto:702nuno@gmail.com">702nuno@gmail.com</a></p>
+      </article>
+      <article data-lang="en" hidden>
+        <h1>Terms of use</h1>
+        <p>Tuk Manager is a free test version, provided as is.</p>
+        <p>There is no warranty that the app, the calculations, the Google spreadsheets or the backup will always be available or free of mistakes. Check the figures before you rely on them.</p>
+        <p>The data you enter is yours. You are responsible for the Google account you use and for who can use this device.</p>
+        <p>The app may change, fail or stop being available, without notice.</p>
+        <p>By using the app you accept these terms and the <a href="privacy.html">privacy policy</a>.</p>
+        <h2>Contact</h2>
+        <p><a href="mailto:702nuno@gmail.com">702nuno@gmail.com</a></p>
+      </article>
+      <p class="legal"><a href="./">Tuk Manager</a> · <a href="privacy.html">Privacidade · Privacy</a></p>
+    </div>
+  </div>
+  <script>
+    (function () {
+      function setLang(code) {
+        var lang = code === 'en' ? 'en' : 'pt';
+        document.documentElement.lang = lang === 'en' ? 'en' : 'pt-PT';
+        document.querySelectorAll('[data-lang]').forEach(function (el) { el.hidden = el.getAttribute('data-lang') !== lang; });
+        document.querySelectorAll('[data-set-lang]').forEach(function (btn) { btn.classList.toggle('on', btn.getAttribute('data-set-lang') === lang); });
+        try { localStorage.setItem('tm.lang', lang); } catch (e) {}
+      }
+      document.querySelectorAll('[data-set-lang]').forEach(function (btn) {
+        btn.addEventListener('click', function () { setLang(btn.getAttribute('data-set-lang')); });
+      });
+      var q = new URLSearchParams(location.search).get('lang');
+      var saved = '';
+      try { saved = localStorage.getItem('tm.lang') || ''; } catch (e) {}
+      setLang(q || saved || 'pt');
+    })();
+  </script>
+</body>
+</html>

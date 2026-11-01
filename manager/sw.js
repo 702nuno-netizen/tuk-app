@@ -1,8 +1,10 @@
 /* Tuk Manager shell. Scope is the /manager/ directory (GitHub Pages: /tuk-app/manager/). */
-const CACHE = 'tuk-manager-shell-v1';
+const CACHE = 'tuk-manager-shell-v2';
 const SHELL = [
   './',
   './index.html',
+  './privacy.html',
+  './terms.html',
   './config.js',
   './manifest.webmanifest',
   './css/app.css',

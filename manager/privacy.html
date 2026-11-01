@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0c2344">
+  <title>Privacidade · Tuk Manager</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div id="app">
+    <header class="hero center">
+      <a class="brand" href="./">Tuk <em>Manager</em></a>
+      <div class="lang" style="max-width:220px;margin-left:auto;margin-right:auto">
+        <button type="button" data-set-lang="pt" class="on">PT</button>
+        <button type="button" data-set-lang="en">EN</button>
+      </div>
+    </header>
+    <div class="page legal-page">
+      <article data-lang="pt">
+        <h1>Política de privacidade</h1>
+        <p>O Tuk Manager corre no teu navegador. Não há um servidor do programador a receber os dados do negócio.</p>
+        <h2>Conta Google</h2>
+        <p>Se entrares com Google, a app pede só este âmbito: <code>https://www.googleapis.com/auth/drive.file</code>. Com ele, a app só consegue ver, editar e apagar ficheiros que ela própria cria. Não lê o resto da tua Drive, o Gmail, o calendário nem os contactos.</p>
+        <h2>Onde ficam os dados do negócio</h2>
+        <p>Na primeira entrada com Google, a app cria na tua própria Drive exatamente dois ficheiros:</p>
+        <ul>
+          <li>«Nome do negócio – Tuk Manager»</li>
+          <li>«Nome do negócio – Tuk Manager (cópia de segurança)»</li>
+        </ul>
+        <p>Serviços, motoristas, gastos, entregas e definições do negócio ficam nessas folhas. A cópia de segurança é substituída uma vez por dia, na primeira abertura desse dia. Esses dados não são copiados para mais nenhum sítio pelo programador.</p>
+        <h2>O que não fazemos</h2>
+        <p>O programador não recolhe, não partilha e não vende os teus dados. Não há publicidade, nem perfil de utilização, nem base de dados nossa.</p>
+        <h2>Neste aparelho</h2>
+        <p>O navegador pode guardar definições locais: língua, modo demonstração, os identificadores das duas folhas e, só durante a sessão, o token de acesso Google. Esse token expira. Não é uma palavra-passe tua.</p>
+        <h2>Sem conta</h2>
+        <p>Se escolheres «Experimentar sem conta», os dados ficam apenas neste aparelho (armazenamento local do navegador) e não são enviados à Google.</p>
+        <h2>Revogar o acesso e apagar</h2>
+        <p>Podes retirar o acesso da app à tua conta em <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p>
+        <p>Podes apagar as duas folhas na tua Google Drive. Apagá-las apaga os dados do negócio que lá estavam.</p>
+        <p>Podes limpar os dados locais nas definições do navegador. No modo sem conta, também há a opção de apagar os dados de demonstração dentro da app, em Dados.</p>
+        <h2>Contacto</h2>
+        <p><a href="mailto:702nuno@gmail.com">702nuno@gmail.com</a></p>
+      </article>
+      <article data-lang="en" hidden>
+        <h1>Privacy policy</h1>
+        <p>Tuk Manager runs in your browser. The developer has no server that receives your business data.</p>
+        <h2>Google account</h2>
+        <p>If you sign in with Google, the app asks only for this scope: <code>https://www.googleapis.com/auth/drive.file</code>. With that scope the app can see, edit and delete only files it creates itself. It does not read the rest of your Drive, Gmail, Calendar or contacts.</p>
+        <h2>Where the business data lives</h2>
+        <p>The first time you sign in with Google, the app creates exactly two files in your own Drive:</p>
+        <ul>
+          <li>“Business name – Tuk Manager”</li>
+          <li>“Business name – Tuk Manager (cópia de segurança)”</li>
+        </ul>
+        <p>Fares, drivers, expenses, handovers and business settings stay in those spreadsheets. The backup is overwritten once a day, the first time you open the app that day. The developer does not copy that data anywhere else.</p>
+        <h2>What we do not do</h2>
+        <p>The developer does not collect, share or sell your data. There is no advertising, no usage profile and no database of ours.</p>
+        <h2>On this device</h2>
+        <p>The browser may store local settings: language, demo mode, the ids of the two spreadsheets and, only for the session, the Google access token. That token expires. It is not your password.</p>
+        <h2>Without an account</h2>
+        <p>If you choose “Try without an account”, the data stays only on this device (the browser’s local storage) and is not sent to Google.</p>
+        <h2>Revoke access and delete</h2>
+        <p>You can remove the app’s access to your account at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p>
+        <p>You can delete the two spreadsheets in your Google Drive. Deleting them deletes the business data stored there.</p>
+        <p>You can clear local data in the browser settings. In demo mode you can also erase the demo data inside the app, under Data.</p>
+        <h2>Contact</h2>
+        <p><a href="mailto:702nuno@gmail.com">702nuno@gmail.com</a></p>
+      </article>
+      <p class="legal"><a href="./">Tuk Manager</a> · <a href="terms.html">Termos · Terms</a></p>
+    </div>
+  </div>
+  <script>
+    (function () {
+      function setLang(code) {
+        var lang = code === 'en' ? 'en' : 'pt';
+        document.documentElement.lang = lang === 'en' ? 'en' : 'pt-PT';
+        document.querySelectorAll('[data-lang]').forEach(function (el) { el.hidden = el.getAttribute('data-lang') !== lang; });
+        document.querySelectorAll('[data-set-lang]').forEach(function (btn) { btn.classList.toggle('on', btn.getAttribute('data-set-lang') === lang); });
+        try { localStorage.setItem('tm.lang', lang); } catch (e) {}
+      }
+      document.querySelectorAll('[data-set-lang]').forEach(function (btn) {
+        btn.addEventListener('click', function () { setLang(btn.getAttribute('data-set-lang')); });
+      });
+      var q = new URLSearchParams(location.search).get('lang');
+      var saved = '';
+      try { saved = localStorage.getItem('tm.lang') || ''; } catch (e) {}
+      setLang(q || saved || 'pt');
+    })();
+  </script>
+</body>
+</html>

@@ -92,15 +92,96 @@ try {
   await root.setOfflineMode(false);
   await root.close();
 
+  const CLIENT = '812500493427-s7g3mm1vsvalacesva7i4jjqh6i2uof3.apps.googleusercontent.com';
+  const gis = await browser.newPage();
+  const gisErrors = [];
+  gis.on('pageerror', err => gisErrors.push(String(err)));
+  await gis.evaluateOnNewDocument(() => {
+    window.__gisLog = [];
+    window.__gisInitError = '';
+    const origAppend = Node.prototype.appendChild;
+    Node.prototype.appendChild = function (node) {
+      if (node && node.tagName === 'SCRIPT' && String(node.src || '').indexOf('accounts.google.com/gsi/client') !== -1) {
+        const appOnload = node.onload;
+        node.onload = function (ev) {
+          const arm = (tries) => {
+            const oauth = window.google && google.accounts && google.accounts.oauth2;
+            if (oauth && typeof oauth.initTokenClient === 'function') {
+              const orig = oauth.initTokenClient.bind(oauth);
+              oauth.initTokenClient = function (cfg) {
+                window.__gisLog.push({ client_id: cfg.client_id, scope: cfg.scope });
+                try {
+                  const client = orig(cfg);
+                  client.requestAccessToken = function (opts) { window.__gisPrompt = opts || {}; };
+                  return client;
+                } catch (e) {
+                  window.__gisInitError = String(e && e.message || e);
+                  throw e;
+                }
+              };
+              if (typeof appOnload === 'function') appOnload.call(node, ev);
+              return;
+            }
+            if (tries > 40) {
+              window.__gisInitError = 'GIS oauth2 was not available after the script loaded';
+              if (typeof appOnload === 'function') appOnload.call(node, ev);
+              return;
+            }
+            setTimeout(() => arm(tries + 1), 50);
+          };
+          arm(0);
+        };
+      }
+      return origAppend.call(this, node);
+    };
+  });
+  await gis.goto('http://127.0.0.1:' + PORT + '/manager/', { waitUntil: 'domcontentloaded' });
+  await gis.waitForSelector('#start-google');
+  await gis.click('#start-google');
+  await gis.waitForFunction(() => (window.__gisLog && window.__gisLog.length) || window.__gisInitError, { timeout: 20000 });
+  const gisInfo = await gis.evaluate(() => ({ log: window.__gisLog, error: window.__gisInitError, prompt: window.__gisPrompt || null }));
+  assert(!gisInfo.error, 'GIS init error: ' + gisInfo.error);
+  assert(gisErrors.length === 0, 'Page errors during GIS init: ' + gisErrors.join(' | '));
+  assert(gisInfo.log[0].client_id === CLIENT, 'Unexpected client id: ' + JSON.stringify(gisInfo.log));
+  assert(gisInfo.log[0].scope === 'https://www.googleapis.com/auth/drive.file', 'Unexpected scope: ' + gisInfo.log[0].scope);
+  assert(gisInfo.prompt && (gisInfo.prompt.prompt === 'select_account' || gisInfo.prompt.prompt === 'consent'), 'Sign-in did not request a Google prompt: ' + JSON.stringify(gisInfo.prompt));
+  await gis.close();
+
+  const legal = await browser.newPage();
+  await legal.goto('http://127.0.0.1:' + PORT + '/manager/privacy.html', { waitUntil: 'domcontentloaded' });
+  let legalText = await text(legal);
+  assert(legalText.includes('702nuno@gmail.com'), 'Privacy contact missing');
+  assert(legalText.includes('drive.file'), 'Privacy scope missing');
+  assert(legalText.includes('myaccount.google.com/permissions'), 'Revoke link missing');
+  assert(legalText.includes('cópia de segurança'), 'Backup file missing from privacy policy');
+  await legal.click('[data-set-lang="en"]');
+  legalText = await text(legal);
+  assert(legalText.includes('runs in your browser'), 'English privacy missing');
+  assert(legalText.includes('does not collect, share or sell'), 'English privacy promise missing');
+  await legal.goto('http://127.0.0.1:' + PORT + '/manager/terms.html', { waitUntil: 'domcontentloaded' });
+  legalText = await text(legal);
+  assert(legalText.toLowerCase().includes('as is') || legalText.includes('tal como está'), 'Terms missing as-is wording: ' + legalText.slice(0, 200));
+  await legal.click('[data-set-lang="en"]');
+  legalText = await text(legal);
+  assert(legalText.includes('provided as is'), 'English terms missing');
+  assert(legalText.includes('free test version'), 'English terms missing test version');
+  await legal.close();
+
   const page = await browser.newPage();
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
   page.on('pageerror', err => console.log('PAGEERROR', err.message));
   page.on('console', msg => { if (msg.type() === 'error') console.log('CONSOLE', msg.text()); });
   await page.goto('http://127.0.0.1:' + PORT + '/manager/', { waitUntil: 'domcontentloaded' });
+  await page.evaluate(() => { localStorage.removeItem('tm.lang'); localStorage.removeItem('tm.mode'); localStorage.removeItem('tm.demo.v1'); });
+  await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector('[data-step="1"]');
   await crash(page);
   const welcome = await text(page);
-  assert(welcome.includes('Modo demonstração'), 'Demo mode was not labelled on the welcome screen');
+  assert(welcome.includes('Entrar com Google'), 'Google sign-in button missing');
+  assert(welcome.includes('Experimentar sem conta'), 'Demo option missing from the welcome screen');
+  assert(welcome.includes('Privacidade') && welcome.includes('Termos'), 'Home page is missing privacy or terms links');
+  const homeHtml = await page.content();
+  assert(homeHtml.includes('href="privacy.html"') && homeHtml.includes('href="terms.html"'), 'index.html links missing after render');
   await shot(page, '01-onboarding');
 
   await page.click('#start-demo');
@@ -192,6 +273,11 @@ try {
   await page.select('[data-bind="lang"]', 'pt');
   await page.click('[data-act="save-general"]');
   await page.waitForSelector('[data-testid="demo-banner"]');
+  await page.evaluate(() => document.querySelector('[data-tab="data"]').click());
+  await page.waitForSelector('[data-screen="data"] a[href="privacy.html"]');
+  await page.waitForSelector('[data-screen="data"] a[href="terms.html"]');
+  await page.click('[data-act="nav"][data-tab="settings"]');
+  await page.waitForSelector('[data-screen="settings"] a[href="privacy.html"]');
 
   const today = calc.lisbonToday();
   await page.evaluate((todayIso) => {
